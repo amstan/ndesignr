@@ -40,7 +40,7 @@ class CityLink:
 	def __init__(self, cities):
 		if(len(cities) != 2):
 			raise ValueError("Only 2 cities allowed.")
-		self.cities = set(cities)
+		self.cities = frozenset(cities)
 		cities[0].links[cities[1]]=self
 		cities[1].links[cities[0]]=self
 	
@@ -61,6 +61,12 @@ class CityLink:
 	def price(seclf):
 		"""Real cost of the link"""
 	
+	def __hash__(self):
+		return hash(self.cities)
+	
+	def __eq__(self,other):
+		return self.cities==other.cities
+	
 	def __repr__(self):
 		return "CityLink(%r)" % (self.cities,)
 	
@@ -72,11 +78,7 @@ if __name__=="__main__":
 	cities=map(City,config.cities)
 	for city in cities:
 		print "%20s %8d %5d" % (city, city.population, city.employees)
-	links=[]
-	for i,c1 in enumerate(cities):
-		for c2 in cities[i:]:
-			if c1!=c2:
-				links.append(CityLink((c1,c2)))
+	links=set(CityLink((c1,c2)) for c1 in cities for c2 in cities if c1!=c2)
 
 	def list_links():	
 		for i,link in enumerate(links):
