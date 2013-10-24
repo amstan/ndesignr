@@ -46,7 +46,7 @@ class CityLink:
 	
 	@property
 	def distance(self):
-		query = "distance from {0} to {1}".format(*[city.name for city in self.cities])
+		query = "distance from %s to %s" % tuple(sorted(city.name for city in self.cities))
 		result = wolfram.query(query).split(" ")
 		self.distance = float(result[0])
 		return self.distance
@@ -63,6 +63,9 @@ class CityLink:
 	
 	def __repr__(self):
 		return "CityLink(%r)" % (self.cities,)
+	
+	def __str__(self):
+		return "%s<->%s" % tuple(sorted(city.name for city in self.cities))
 
 if __name__=="__main__":
 	import config
@@ -76,5 +79,5 @@ if __name__=="__main__":
 				links.append(CityLink((c1,c2)))
 
 	def list_links():	
-		for link in links:
-			print link, link.distance, link.metric
+		for i,link in enumerate(links):
+			print "%s/%s" % (i,len(links)),  link, link.distance, link.metric
