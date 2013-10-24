@@ -1,3 +1,6 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+
 import wolfram
 
 class City:
@@ -9,14 +12,24 @@ class City:
 	
 	@property
 	def population(self):
-		result = wolfram.client.query("population of " + self.name).result().split(" ")
+		result = wolfram.query("population of " + self.name).split(" ")
 		number = float(result[0])
 		
 		if("million" in result):
 			number *= 1000000
 		
-		self.population = number
+		self.population = int(number)
 		return self.population
+	
+	def __hash__(self):
+		return hash(self.name)
+
+	def __cmp__(self,other):
+		return cmp(self.name,other.name)
+	
+	@property
+	def employees(self):
+		return int(self.population*config.employees_factor)+config.employees_offset
 	
 	def __repr__(self):
 		return "City(%r)" % (self.name)
@@ -27,16 +40,41 @@ class CityLink:
 	def __init__(self, cities):
 		if(len(cities) != 2):
 			raise ValueError("Only 2 cities allowed.")
-		self.cities = cities
+		self.cities = set(cities)
 		cities[0].links[cities[1]]=self
 		cities[1].links[cities[0]]=self
 	
 	@property
 	def distance(self):
 		query = "distance from {0} to {1}".format(*[city.name for city in self.cities])
-		result = wolfram.client.query(query).result().split(" ")
+		result = wolfram.query(query).split(" ")
 		self.distance = float(result[0])
 		return self.distance
 	
+	@property
+	def metric(self):
+		"""Metric cost of the link"""
+		min_employees = min(city.employees for city in self.cities)
+		return self.distance * config.metric_distance + min_employees * config.metric_employees
+
+	@property
+	def price(seclf):
+		"""Real cost of the link"""
+	
 	def __repr__(self):
-		return "CityLink(%r)" % self.cities
+		return "CityLink(%r)" % (self.cities,)
+
+if __name__=="__main__":
+	import config
+	cities=map(City,config.cities)
+	for city in cities:
+		print "%20s %8d %5d" % (city, city.population, city.employees)
+	links=[]
+	for i,c1 in enumerate(cities):
+		for c2 in cities[i:]:
+			if c1!=c2:
+				links.append(CityLink((c1,c2)))
+
+	def list_links():	
+		for link in links:
+			print link, link.distance, link.metric
