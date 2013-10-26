@@ -1,6 +1,9 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 
+import ipaddress
+import ipaddress_additions
+
 import wolfram
 
 class City:
@@ -79,7 +82,7 @@ if __name__=="__main__":
 	for city in cities:
 		print "%20s %8d %5d" % (city, city.population, city.employees)
 	links=set(CityLink((c1,c2)) for c1 in cities for c2 in cities if c1!=c2)
-
+	
 	def list_links():	
 		for i,link in enumerate(links):
 			print "%s/%s" % (i,len(links)),  link, link.distance, link.metric
