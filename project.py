@@ -21,6 +21,11 @@ def stdout_redirected(new_stdout):
 	finally:
 		sys.stdout = save_stdout
 
+def format_gps(coords_tuple):
+	vertical="NS"[coords_tuple[1]>0]
+	horizontal="WE"[coords_tuple[1]>0]
+	return "%0.2f deg %s, %0.2f deg %s" % (abs(coords_tuple[1]), vertical, abs(coords_tuple[0]), horizontal)
+
 class City:
 	"""A city in the context of a computer network."""
 	
@@ -42,13 +47,12 @@ class City:
 				n+=float(parsed[1][:-1])/60
 			if parsed[-1] in "SW":
 				n*=-1
-			n+=180
 			return n
 		
 		y=parsenumber(parsed[:middle])
 		x=parsenumber(parsed[middle+1:])
 		
-		return (x/10,y/10)
+		return (x,y)
 
 	@property
 	def population(self):
@@ -124,8 +128,7 @@ class City:
 	def __str__(self):
 		output=StringIO.StringIO()
 		with stdout_redirected(output):
-			print "%s (population %d)" % (self.name,self.population)
-			print "%d Employees" % self.employees
+			print "#%s (population %d, %d employees)" % (self.name,self.population,self.employees)
 			print
 			print "%s block allocated to this branch." % self.network
 			print
@@ -133,14 +136,24 @@ class City:
 			networks=self.networks
 			internet=networks.pop("Internet")
 			
-			print "Networks:"
+			print "##Networks"
 			for name,network in sorted(networks.items(), key=lambda (name,network): ipaddress.get_mixed_type_key(network)):
-				print " %s: %d hosts %s (%d available)" % (name, network.hosts, network, (2**(32-network.prefixlen))-3)
-			print ""
+				print "* **%s:** %d/%d hosts %s" % (name, network.hosts, (2**(32-network.prefixlen))-3, network)
+			print
 			
-			print "Internet Uplinks:"
+			print "##Internet Uplinks"
 			for network in internet:
-				print " local:%s, ISP:%s" % tuple(network.hosts())
+				print "* local:%s, ISP:%s" % tuple(network.hosts())
+			print
+			
+			print "##WAN links"
+			for othercity,link in self.links.items():
+				dlcis=list(link.dlcis)
+				ips=list(link.network.hosts())
+				if sorted([city.name for city in link.cities])[0]!=self.name:
+					dlcis.reverse()
+					ips.reverse()
+				print "* **%s:** %s(DLCI %s) -> %s(DLCI %s)" % (othercity.name,ips[0],dlcis[0],ips[1],dlcis[1])
 			
 		return output.getvalue()
 
@@ -195,7 +208,7 @@ if __name__=="__main__":
 	city_network_sizes={}
 	for city in cities.values():
 		city_network_sizes[city]=city.network_size
-		print "%25r %8d %5d /%d %r" % (city, city.population, city.employees, city_network_sizes[city], city.location)
+		print "%25r %8d %5d /%d" % (city, city.population, city.employees, city_network_sizes[city])
 	links=set(CityLink((c1,c2)) for c1 in cities.values() for c2 in cities.values() if c1!=c2)
 	
 	for city,network_size in sorted(city_network_sizes.items(),key=lambda (city,network_size):network_size):
@@ -206,20 +219,23 @@ if __name__=="__main__":
 			network=ipaddress.IPv4Network(u"%s/%d" % (config.company_network_v4.network_address,network_size))
 		city.network=network
 	
-	def list_links():
-		for i,link in enumerate(sorted(links,key=lambda link:sorted(city.name for city in link.cities))):
-			print "%s/%s" % (i+1,len(links)),  link, link.distance, link.metric
-	
-	def list_networks():
-		for city in sorted(cities.values(),key=lambda city: ipaddress.get_mixed_type_key(city.network)):
-			print "%25r %s" % (city, city.network)
+	def list_links(csv=False):
+		if csv:
+			print "Source; Source IP; Source DLCI; Destination; Destination IP; Destination DLCI; Distance; Metric"
+			for link in sorted(links,key=lambda link:sorted(city.name for city in link.cities)):
+				names=sorted([city.name for city in link.cities])
+				dlcis=list(link.dlcis)
+				ips=list(link.network.hosts())
+				print ";".join(map(str,(names[0],ips[0],dlcis[0],names[1],ips[1],dlcis[1],link.distance,link.metric)))
+		else:
+			for i,link in enumerate(sorted(links,key=lambda link:sorted(city.name for city in link.cities))):
+				print i, link, link.distance, link.metric
 	
 	for city in cities.values():
 		for max_employees in sorted(config.wan_links):
 			num_links = config.wan_links[max_employees]
 			if max_employees>city.employees:
 				break
-		print city.name, city.employees, num_links
 		worthy_links=sorted(city.links.values(),key=lambda link: link.metric,reverse=True)[:num_links]
 		for othercity,link in city.links.items():
 			if link not in worthy_links:
@@ -231,7 +247,6 @@ if __name__=="__main__":
 	from pygraphviz import *
 	
 	graph = AGraph()
-	#graph.graph_attr["mode"]="ipsep"
 	graph.graph_attr["K"]=10
 	graph.graph_attr["maxiter"]=10000
 	graph.node_attr["image"]="resources/router.png"
@@ -253,10 +268,28 @@ if __name__=="__main__":
 			link.network=branchnetworks.next_network(cidr=30)
 		previous_wan=link.network
 		
-		cities=sorted([city.name for city in link.cities])
+		city_names=sorted([city.name for city in link.cities])
 		link.dlcis=(100+i*10,100+i*10+1)
 		ips=list(link.network.hosts())
 		
-		graph.add_edge(cities[0],cities[1],headlabel="%s\lDLCI: %d" % (ips[0],link.dlcis[0]),taillabel="%s\lDLCI: %d" % (ips[1],link.dlcis[1]))
+		graph.add_edge(city_names[0],city_names[1],headlabel="%s\lDLCI: %d" % (ips[0],link.dlcis[0]),taillabel="%s\lDLCI: %d" % (ips[1],link.dlcis[1]))
 	
-	graph.draw("output.svg",prog="fdp")
+	def list_branches(detail=False):
+		if not detail:
+			print "Name; Network; Employees; Population; Coordinates"
+		if detail:
+			print "Name; Network; Hosts"
+		for city_name,city in sorted(cities.items()):
+			if not detail:
+				print "%s;%s;%d;%d;%s" % (city.name,city.network,city.employees,city.population,format_gps(city.location))
+			if detail:
+				print "%s;%s;%d" % (city.name,city.network,len(list(city.network.hosts())))
+				networks=city.networks
+				internet=networks.pop("Internet")
+				for network_name,network in sorted(networks.items(), key=lambda (name,network): ipaddress.get_mixed_type_key(network)):
+					print "%s-%s;%s;%d" % (city.name,network_name,network,network.hosts)
+				for i,network in enumerate(internet):
+					print "%s-Internet uplink %d;%s;%d" % (city.name,i,network,2)
+	
+	def output_wan_diagram():
+		graph.draw("/tmp/wan.svg",prog="fdp")
